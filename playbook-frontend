@@ -1,0 +1,67 @@
+---
+- name: Setup Vite Frontend
+  hosts: all  # Replace with specific host group if needed
+  become: yes
+
+  vars:
+    aws_access_key: "<your-aws-access-key>"
+    aws_secret_key: "<your-aws-secret-key>"
+    s3_frontend_bucket: "mern-frontend-bucket-name"
+    ec2_dns: "<your-ec2-dns>"
+    s3_media_bucket: "mern-media-r2osjfjd.s3.eu-north-1.amazonaws.com"
+    frontend_dir: "/home/ubuntu/blog-app/frontend"
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - nodejs
+          - npm
+          - awscli
+        state: present
+        update_cache: yes
+
+    - name: Install pnpm globally
+      npm:
+        name: pnpm
+        global: yes
+
+    - name: Create environment file
+      copy:
+        dest: "{{ frontend_dir }}/.env"
+        content: |
+          VITE_BASE_URL=http://{{ ec2_dns }}:5000/api
+          VITE_MEDIA_BASE_URL=https://{{ s3_media_bucket }}
+
+    - name: Create AWS credentials file
+      copy:
+        dest: /home/ubuntu/.aws/credentials
+        content: |
+          [default]
+          aws_access_key_id={{ aws_access_key }}
+          aws_secret_access_key={{ aws_secret_key }}
+        mode: '0600'
+
+    - name: Create AWS config file
+      copy:
+        dest: /home/ubuntu/.aws/config
+        content: |
+          [default]
+          region = eu-north-1
+          output = json
+        mode: '0600'
+
+    - name: Install frontend dependencies
+      command: pnpm install
+      args:
+        chdir: "{{ frontend_dir }}"
+
+    - name: Build frontend
+      command: pnpm run build
+      args:
+        chdir: "{{ frontend_dir }}"
+
+    - name: Sync dist/ to S3 bucket
+      command: aws s3 sync dist/ s3://{{ s3_frontend_bucket }}/
+      args:
+        chdir: "{{ frontend_dir }}"
